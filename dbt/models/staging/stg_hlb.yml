@@ -1,0 +1,95 @@
+version: 2
+
+models:
+  - name: stg_hlb__gl
+    description: |
+      HLB general-ledger detail — typed pass-through of the bronze
+      `gl_import` table. One row per posting line. Materialized as a view
+      (per `dbt_project.yml` default for `staging/`).
+    columns:
+      - name: transaction_id
+        description: Source-system transaction ID. Composite-keyed with `line_order`.
+        tests: [not_null]
+      - name: line_order
+        description: Line-order within a transaction. Part of the composite key.
+        tests: [not_null]
+      - name: date
+        description: Posting date.
+        tests: [not_null]
+      - name: account
+        description: |
+          Account number. Tested via relationship against
+          `stg_hlb__accounts` downstream in `int_hlb__gl_enriched`.
+        tests: [not_null]
+      - name: customer_id
+        description: Customer foreign key (nullable — non-AR postings have none).
+      - name: sku
+        description: SKU foreign key (nullable — non-revenue postings have none).
+      - name: amount
+        description: Signed posting amount (positive = debit, negative = credit).
+        tests: [not_null]
+      - name: quantity
+        description: Units (set on revenue lines, null elsewhere).
+      - name: updated_at
+        description: dlt-populated load timestamp.
+        tests: [not_null]
+
+  - name: stg_hlb__accounts
+    description: |
+      HLB chart of accounts, filtered to accounts referenced in
+      `stg_hlb__gl`, and de-duplicated where the source contains a
+      live + `(deleted)` pair on the same `account_number`.
+    columns:
+      - name: account
+        description: Account code — primary key after dedup.
+        tests: [unique, not_null]
+      - name: account_name
+        description: Short account label.
+      - name: account_full_name
+        description: Long-form name (often includes parent path).
+      - name: parent_account_name
+        description: Immediate parent in the account hierarchy.
+      - name: account_type
+        description: Top-level type (`Income`, `Expense`, `Asset`, …).
+      - name: account_type_detail
+        description: Type subclassification.
+      - name: updated_at
+        tests: [not_null]
+
+  - name: stg_hlb__customers
+    description: |
+      HLB customers, filtered to those referenced in the GL. Country is
+      cleaned: state-code → United States, China/Taiwan normalized,
+      null → `'No Country'` sentinel.
+    columns:
+      - name: customer_id
+        description: Primary key.
+        tests: [unique, not_null]
+      - name: customer_name
+        description: Customer display name.
+      - name: customer_country
+        description: Cleaned country (state-inferred US, normalized China/Taiwan).
+        tests: [not_null]
+      - name: customer_zip
+        description: Customer postal code.
+      - name: customer_state
+        description: US state code where applicable.
+      - name: updated_at
+        tests: [not_null]
+
+  - name: stg_hlb__skus
+    description: |
+      HLB SKUs filtered to those referenced on revenue accounts
+      (account `4xxx`, excluding the discount account `4010`).
+      Coalesces description/name so consumers always have a non-null label.
+    columns:
+      - name: sku
+        description: SKU code — primary key (after the revenue-account filter).
+        tests: [unique, not_null]
+      - name: sku_type
+        description: Classification of the SKU (e.g. `Inventory`, `Service`).
+      - name: sku_name
+        description: Coalesced description/name with a `'No Description'` fallback.
+        tests: [not_null]
+      - name: updated_at
+        tests: [not_null]

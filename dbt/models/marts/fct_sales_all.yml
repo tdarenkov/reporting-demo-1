@@ -1,0 +1,71 @@
+version: 2
+
+models:
+  - name: fct_sales_all
+    description: |
+      Cross-subsidiary sales fact — the report-facing UNION of all seven
+      per-subsidiary marts (`fct_hl__sales`, `fct_hlb__sales`,
+      `fct_hlc__sales`, `fct_hld__sales`, `fct_hlm__sales`,
+      `fct_hlp__sales`, `fct_hls__sales`). Materialized as a table for
+      fast read access.
+
+      Grain: one row per (`subsidiary`, `transaction_id`) — per-sub
+      `transaction_id` alone isn't globally unique, so the contract PK
+      is composite.
+    config: { contract: { enforced: true } }
+    constraints:
+      - type: primary_key
+        columns: [subsidiary, transaction_id]
+    columns:
+      - name: date
+        description: Posting / sales-document date for the row.
+        data_type: date
+        constraints: [{ type: not_null }]
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_calendar')
+              field: date
+      - name: subsidiary
+        description: |
+          Subsidiary code. Restricted to the seven valid codes by
+          `accepted_values` test and a contract CHECK.
+        data_type: text
+        constraints:
+          - type: not_null
+          - type: check
+            expression: "subsidiary in ('HL','HLB','HLC','HLD','HLM','HLP','HLS')"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['HL', 'HLB', 'HLC', 'HLD', 'HLM', 'HLP', 'HLS']
+      - name: sku_local
+        description: SKU code as it appears in the originating subsidiary's source system.
+        data_type: text
+      - name: customer_id_local
+        description: Customer id (or name, where the source has no id) from the originating subsidiary.
+        data_type: text
+      - name: fx_amount
+        description: Line revenue in the originating subsidiary's local (functional) currency.
+        data_type: numeric
+        constraints: [{ type: not_null }]
+        tests: [not_null]
+      - name: usd_amount
+        description: |
+          Line revenue translated to USD. Equals `fx_amount` for the
+          USD-functional subs (HL/HLB); FX-translated for the others.
+        data_type: numeric
+        constraints: [{ type: not_null }]
+      - name: quantity
+        description: Units on the revenue line.
+        data_type: numeric
+      - name: transaction_id
+        description: |
+          Per-sub composite-built grain key. Globally unique only
+          when paired with `subsidiary` — see the composite PK above.
+        data_type: text
+        constraints: [{ type: not_null }]
+      - name: updated_at
+        description: dlt-populated load timestamp from the upstream bronze.
+        data_type: timestamp with time zone
+        constraints: [{ type: not_null }]

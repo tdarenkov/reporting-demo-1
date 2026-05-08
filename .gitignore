@@ -1,0 +1,27 @@
+.DS_Store
+.env
+.env.local
+*.log
+
+# Project-local Claude Code instructions
+CLAUDE.md
+
+# Local-only: client data, credentials, Fabric exports with live tokens
+warehouse/backups/
+warehouse/scripts/logs/
+workspace/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+
+# dbt build artifacts
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/

@@ -1,0 +1,90 @@
+version: 2
+
+models:
+  - name: stg_hld__gl
+    description: HLD general-ledger detail — typed pass-through.
+    columns:
+      - name: account
+        description: Posting account.
+      - name: account_name
+        description: Account label snapshot from the source GL (denormalized).
+      - name: date
+        description: Posting date.
+        tests: [not_null]
+      - name: contra_account
+        description: Contra account on the offsetting side.
+      - name: contra_account_name
+      - name: contents
+        description: Posting narrative / free-text description.
+      - name: doc_no
+        description: Source document number.
+      - name: amount
+        description: Signed posting amount.
+        tests: [not_null]
+      - name: updated_at
+        tests: [not_null]
+
+  - name: stg_hld__sales
+    description: |
+      HLD sales — already at line grain in the source (one row per
+      `(doc_id, detail_id)`), so no header/detail split is needed.
+      Feeds `fct_hld__sales` directly.
+    columns:
+      - name: doc_id
+        description: Sales document id (header grain).
+        tests: [not_null]
+      - name: doc_num
+        description: Human-readable document number.
+      - name: process_id
+        description: Workflow / processing-batch id from the source.
+      - name: period
+        description: Fiscal period label.
+      - name: customer_number
+        description: Foreign key to `stg_hld__customers.customer_number`.
+      - name: date
+        description: Document date.
+        tests: [not_null]
+      - name: amount_header
+        description: Document-level gross total.
+      - name: detail_id
+        description: Line id within the document. Composite key with `doc_id`.
+        tests: [not_null]
+      - name: process_pos_id
+        description: Workflow position reference.
+      - name: salesperson_id
+        description: Salesperson code.
+      - name: sku
+        description: SKU code.
+      - name: amount
+        description: Line revenue amount.
+        tests: [not_null]
+      - name: quantity
+        description: Units sold on the line.
+      - name: updated_at
+        tests: [not_null]
+
+  - name: stg_hld__customers
+    description: HLD customer master, with banking identifiers from the source.
+    columns:
+      - name: customer_number
+        description: Primary key — referenced from `stg_hld__sales`.
+        tests: [unique, not_null]
+      - name: customer_name
+      - name: iban
+        description: Customer bank IBAN (used by the SEPA reconciliation pipeline).
+      - name: bic
+        description: Customer bank BIC.
+      - name: vat_id
+        description: Customer VAT registration number.
+      - name: updated_at
+        tests: [not_null]
+
+  - name: stg_hld__skus
+    description: HLD SKU master — typed pass-through.
+    columns:
+      - name: sku
+        description: SKU code — primary key.
+        tests: [unique, not_null]
+      - name: sku_name
+      - name: updated_at
+        tests: [not_null]

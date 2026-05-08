@@ -1,0 +1,78 @@
+version: 2
+
+sources:
+  - name: bronze_hl
+    description: HL bronze landing — Sage-style multi-sheet workbook.
+    schema: bronze_hl
+    tables:
+      - name: gl_current_import
+      - name: gl_accounts_import
+      - name: ar_headers_import
+      - name: ar_details_import
+      - name: customers_import
+      - name: vendors_import
+      - name: skus_import
+      - name: star_items_import
+      - name: im_transactions_import
+      - name: tbs_import
+
+  - name: bronze_hlc
+    description: HLC bronze landing — xlsx exports with localized number format.
+    schema: bronze_hlc
+    tables:
+      - name: gl_import
+      - name: gl_accounts_import
+      - name: customers_import
+      - name: skus_import
+      - name: sales_headers_import
+      - name: sales_details_import
+
+  - name: bronze_hld
+    description: HLD bronze landing — multi-format ingest.
+    schema: bronze_hld
+    tables:
+      - name: gl_import
+      - name: tbs_import
+      - name: customers_import
+      - name: skus_import
+      - name: sales_import
+      - name: bank_transactions_import
+
+  - name: bronze_hlm
+    description: HLM bronze landing — JSON, 1C-style 3+3 dimensions.
+    schema: bronze_hlm
+    tables:
+      - name: gl_import
+      - name: gl_accounts_import
+      - name: customers_import
+      - name: skus_import
+      - name: sales_import
+      - name: costs_import
+      - name: special_mapping_import
+
+  - name: bronze_hlp
+    description: HLP bronze landing — semicolon CSVs.
+    schema: bronze_hlp
+    tables:
+      - name: gl_import
+      - name: gl_accounts_import
+      - name: gl_balance_import
+      - name: customers_import
+      - name: skus_import
+      - name: sales_import
+
+  - name: bronze_hls
+    description: HLS bronze landing — OData-style snapshot.
+    schema: bronze_hls
+    tables:
+      - name: gl_import
+      - name: gl_accounts_import
+      - name: gl_dim_catalogs
+      - name: sku_catalog_import
+      - name: special_mapping_import
+
+  - name: bronze_tbs
+    description: TBS bronze landing — multi-subsidiary trial-balance aggregator.
+    schema: bronze_tbs
+    tables:
+      - name: tbs_import

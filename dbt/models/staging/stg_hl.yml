@@ -1,0 +1,142 @@
+version: 2
+
+models:
+  - name: stg_hl__gl
+    description: |
+      HL general-ledger detail — typed pass-through of the bronze
+      `gl_current_import` table. One row per GL posting line.
+    columns:
+      - name: date
+        description: Posting date.
+        tests: [not_null]
+      - name: account
+        description: GL account number.
+        tests: [not_null]
+      - name: source_journal
+        description: Originating sub-ledger (`SO`, `AR`, `GJ`, …).
+      - name: journal_no
+        description: Journal-entry number from the source system.
+      - name: sequence_no
+        description: Line sequence within the journal entry.
+      - name: amount
+        description: Signed posting amount in HL's local currency (USD).
+        tests: [not_null]
+      - name: updated_at
+        description: dlt-populated load timestamp.
+        tests: [not_null]
+
+  - name: stg_hl__ar_headers
+    description: |
+      AR invoice headers, one row per (`invoice_no`, `header_seq_no`).
+      Used by `int_hl__sales_lines` to attach customer + invoice metadata
+      to each AR detail line.
+    columns:
+      - name: invoice_no
+        description: Invoice identifier from the source AR system.
+        tests: [not_null]
+      - name: header_seq_no
+        description: |
+          Header sequence within an invoice (a single invoice may have
+          multiple billing headers). Part of the composite key.
+        tests: [not_null]
+      - name: source_journal
+        description: Originating sub-ledger code.
+      - name: journal_no
+        description: Journal-entry number from the source system.
+      - name: invoice_type
+        description: Document classification (`IS` invoice, `BS` billing, …).
+      - name: invoice_date
+        description: Date the invoice was issued.
+      - name: transaction_date
+        description: Date used for accounting recognition.
+      - name: customer_id
+        description: Customer foreign key into `stg_hl__customers`.
+      - name: salesperson_id
+        description: Salesperson code (free-text).
+      - name: amount_taxable
+        description: Taxable line amount.
+      - name: amount_nontaxable
+        description: Non-taxable line amount.
+      - name: amount_freight
+        description: Freight charges on this header.
+      - name: amount_discount
+        description: Discounts applied at the header level.
+      - name: updated_at
+        description: dlt-populated load timestamp.
+        tests: [not_null]
+
+  - name: stg_hl__ar_details
+    description: |
+      AR invoice line detail. Composite key
+      (`invoice_no`, `header_seq_no`, `detail_seq_no`).
+    columns:
+      - name: invoice_no
+        tests: [not_null]
+      - name: header_seq_no
+        tests: [not_null]
+      - name: detail_seq_no
+        description: Detail-line sequence within the header.
+        tests: [not_null]
+      - name: sales_acct_key
+        description: GL revenue account this line posts to.
+      - name: sku
+        description: SKU code (foreign key into `stg_hl__skus`).
+      - name: amount
+        description: Line revenue amount.
+      - name: quantity
+        description: Units sold on the line.
+      - name: updated_at
+        tests: [not_null]
+
+  - name: stg_hl__accounts
+    description: |
+      HL chart of accounts, filtered to accounts referenced in the GL
+      detail (see `stg_hl__gl`). Mirrors the original Fabric
+      "accounts-used" view.
+    columns:
+      - name: account
+        description: Account code — primary key after the used-account filter.
+        tests: [unique, not_null]
+      - name: account_name
+        description: Short account label.
+      - name: account_category
+        description: Categorization (e.g. `Asset`, `Liability`, `Income`).
+      - name: account_group
+        description: Higher-level grouping above category.
+      - name: account_type
+        description: Type detail (used for revenue/expense gating in marts).
+      - name: updated_at
+        tests: [not_null]
+
+  - name: stg_hl__customers
+    description: |
+      HL customer master, with a country fallback so downstream models
+      always see a non-null `customer_country`.
+    columns:
+      - name: customer_id
+        description: Primary key.
+        tests: [unique, not_null]
+      - name: customer_name
+        description: Customer display name.
+      - name: customer_country
+        description: Country with `'No Country'` sentinel substitution.
+        tests: [not_null]
+      - name: updated_at
+        tests: [not_null]
+
+  - name: stg_hl__skus
+    description: HL SKU master — typed pass-through of `skus_import`.
+    columns:
+      - name: sku
+        description: SKU code — primary key.
+        tests: [unique, not_null]
+      - name: item_type
+        description: Classification of the SKU (e.g. `Inventory`, `Service`).
+      - name: item_name
+        description: SKU display name.
+      - name: product_line
+        description: Product-line grouping.
+      - name: vendor_id
+        description: Source vendor reference.
+      - name: updated_at
+        tests: [not_null]

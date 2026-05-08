@@ -1,0 +1,114 @@
+version: 2
+
+models:
+  - name: stg_hlp__gl
+    description: |
+      HLP general-ledger movements (period activity). One row per posting
+      line, with explicit DR/CR `direction` rather than signed amount.
+    columns:
+      - name: id
+        description: Source GL row id.
+        tests: [not_null]
+      - name: line_number
+        description: Line within the source row. Composite key with `id`.
+        tests: [not_null]
+      - name: date
+        tests: [not_null]
+      - name: direction
+        description: |
+          Posting direction (e.g. `D` debit, `C` credit). Used by
+          downstream consumers in lieu of a signed amount.
+      - name: account
+      - name: amount
+        description: Posting amount (positive — sign in `direction`).
+        tests: [not_null]
+      - name: updated_at
+        tests: [not_null]
+
+  - name: stg_hlp__gl_balance
+    description: |
+      HLP general-ledger opening balances. Same shape as `stg_hlp__gl`
+      but loaded from a separate source file representing balances
+      carried into the period.
+    columns:
+      - name: id
+        tests: [not_null]
+      - name: line_number
+        tests: [not_null]
+      - name: date
+        tests: [not_null]
+      - name: direction
+        description: Opening balance side (debit / credit).
+      - name: account
+      - name: amount
+        description: Opening balance amount.
+        tests: [not_null]
+      - name: updated_at
+        tests: [not_null]
+
+  - name: stg_hlp__sales
+    description: |
+      HLP sales — line-grain. Feeds `fct_hlp__sales` directly. The mart
+      builds `transaction_id` as `invoice_id || '-' || detail_id`.
+    columns:
+      - name: date
+        tests: [not_null]
+      - name: invoice_id
+        description: Header-grain document id.
+        tests: [not_null]
+      - name: doc_num
+        description: Human-readable document number.
+      - name: customer_id
+      - name: header_amount
+        description: Document-level gross total.
+      - name: detail_id
+        description: Line id within the document. Composite with `invoice_id`.
+        tests: [not_null]
+      - name: sku
+      - name: detail_amount
+        description: Line revenue amount (the value used in the mart).
+        tests: [not_null]
+      - name: quantity
+      - name: updated_at
+        tests: [not_null]
+
+  - name: stg_hlp__accounts
+    description: |
+      HLP chart of accounts — multi-year (the source repeats each
+      account with an explicit `account_year`).
+    columns:
+      - name: account_year
+        description: Fiscal year the account-row is valid for.
+        tests: [not_null]
+      - name: account_code
+      - name: account_name
+      - name: level
+        description: Depth in the account hierarchy.
+      - name: parent1
+        description: Immediate parent account code.
+      - name: updated_at
+        tests: [not_null]
+
+  - name: stg_hlp__customers
+    description: HLP customers, with `'No Country'` sentinel for null country.
+    columns:
+      - name: customer_id
+        tests: [unique, not_null]
+      - name: customer_name
+      - name: customer_country
+        tests: [not_null]
+      - name: updated_at
+        tests: [not_null]
+
+  - name: stg_hlp__skus
+    description: HLP SKU master — typed pass-through.
+    columns:
+      - name: sku_id
+        description: Internal SKU id from the source.
+      - name: sku
+        description: SKU code — primary key.
+        tests: [unique, not_null]
+      - name: item_name
+      - name: item_type
+      - name: updated_at
+        tests: [not_null]

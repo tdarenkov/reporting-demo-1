@@ -1,0 +1,20 @@
+version: 2
+
+# Sources from the legacy silver schemas. dbt reads these as upstream
+# data without managing them. They're populated by
+# warehouse/scripts/load_demo_data.py from the synthesized parquet.
+#
+# The reason we expose silver as a source rather than re-deriving in
+# dbt: silver_calendar.date_table is the canonical date dim across the
+# whole platform, including the legacy silver_<sub>.* tables. Letting
+# dbt read it directly keeps a single source of truth.
+
+sources:
+  - name: silver_calendar
+    schema: silver_calendar
+    tables:
+      - name: date_table
+        description: Canonical date dimension.
+        columns:
+          - name: date
+            description: Primary key.

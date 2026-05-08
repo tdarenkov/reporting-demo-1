@@ -1,0 +1,82 @@
+version: 2
+
+models:
+  - name: stg_hls__gl
+    description: |
+      HLS general-ledger detail — pass-through of the OData snapshot.
+      Sales recognition lives in the GL: `int_hls__sales` filters to
+      account `90.01.1` (sales revenue) and joins the partner + SKU
+      catalogs via the `dim_*_key` columns.
+    columns:
+      - name: date
+        tests: [not_null]
+      - name: id
+        description: Source GL row id.
+        tests: [not_null]
+      - name: line_number
+        description: Line within the source row. Composite with `id`.
+        tests: [not_null]
+      - name: accountdr_key
+        description: Foreign key to `stg_hls__accounts.account_key` (debit side).
+      - name: accountcr_key
+        description: Foreign key to `stg_hls__accounts.account_key` (credit side).
+      - name: dim_dr1
+        description: First debit dimension code (resolves to a partner via `stg_hls__partners`).
+      - name: dim_dr1_type
+      - name: dim_cr1
+        description: First credit dimension code (resolves to a SKU via `stg_hls__skus`).
+      - name: dim_cr1_type
+      - name: amount
+        description: Posting amount (positive — DR/CR via the account keys).
+        tests: [not_null]
+      - name: quantity_credit
+        description: Units on the credit side (revenue quantities).
+      - name: contents
+        description: Posting narrative.
+      - name: updated_at
+        tests: [not_null]
+
+  - name: stg_hls__accounts
+    description: HLS chart of accounts. PK is the synthetic `account_key`.
+    columns:
+      - name: account_key
+        description: Surrogate key used by GL postings — primary key.
+        tests: [unique, not_null]
+      - name: account
+        description: Human-readable account number (`90.01.1`, etc.).
+      - name: description
+      - name: account_type
+      - name: updated_at
+        tests: [not_null]
+
+  - name: stg_hls__partners
+    description: |
+      HLS partner (customer) catalog — typed pass-through of the
+      `gl_dim_catalogs` source. Each partner is identified by `dim_key`
+      and resolves the customer name on revenue postings.
+    columns:
+      - name: dim_key
+        description: Surrogate key referenced from GL `dim_dr1` — primary key.
+        tests: [unique, not_null]
+      - name: dim_description
+        description: Partner display name.
+      - name: source_file
+        description: Originating source-file name (provenance trail).
+      - name: updated_at
+        tests: [not_null]
+
+  - name: stg_hls__skus
+    description: |
+      HLS SKU catalog — typed pass-through. Resolves the `dim_cr1`
+      reference on revenue postings to a SKU code + description.
+    columns:
+      - name: dim_key
+        description: Surrogate key referenced from GL `dim_cr1` — primary key.
+        tests: [unique, not_null]
+      - name: dim_description
+        description: SKU display description.
+      - name: sku
+        description: SKU code carried alongside the surrogate key.
+      - name: source_file
+      - name: updated_at
+        tests: [not_null]

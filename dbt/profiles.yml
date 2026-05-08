@@ -1,0 +1,24 @@
+acme:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('PGHOST') }}"
+      port: "{{ env_var('PGPORT', '5432') | int }}"
+      user: "{{ env_var('PGUSER') }}"
+      password: "{{ env_var('PGPASSWORD') }}"
+      dbname: "{{ env_var('PGDATABASE') }}"
+      # The "schema" config in dbt-postgres is the *default* dataset
+      # (i.e. the schema where dbt creates objects when nothing is
+      # specified). Per-model `+schema: ...` lines in dbt_project.yml
+      # are appended: `<schema>_<+schema>`.
+      #
+      # Using `silver_dbt` here keeps dbt-managed objects cleanly
+      # separate from the existing silver_<sub> schemas (which are
+      # populated by warehouse/scripts/load_demo_data.py for the
+      # baseline demo). When dbt eventually owns silver fully, this
+      # collapses back to `silver`.
+      schema: silver_dbt
+      threads: 4
+      sslmode: require
+      keepalives_idle: 0

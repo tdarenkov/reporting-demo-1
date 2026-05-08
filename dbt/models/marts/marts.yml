@@ -1,0 +1,354 @@
+version: 2
+
+# Every per-subsidiary fact mart shares the same column shape (so they
+# UNION cleanly into fct_sales_all). Contracts enforce:
+#   - PRIMARY KEY on transaction_id — grain enforced at write time
+#   - NOT NULL on the load-bearing columns
+#   - CHECK on subsidiary so a row can never claim a different sub
+#
+# Tests cover the residue Postgres can't express in DDL: cross-table
+# `relationships`, `accepted_values`, etc.
+#
+# Column descriptions are shared across every fct_<sub>__sales mart and
+# repeated below for completeness on each — this is what dbt docs
+# surfaces on each model page.
+
+models:
+  - name: fct_hlb__sales
+    description: |
+      HLB sales fact at posting-line grain. Built from `int_hlb__gl_enriched`,
+      narrowed to revenue accounts (`account_type = 'Income'`, excluding
+      the discount account `4010`). Source amounts are flipped (revenue
+      is stored as negative debits in HLB's GL).
+    config: { contract: { enforced: true } }
+    columns:
+      - name: date
+        description: Posting date (mart key — referenced by the date dimension).
+        data_type: date
+        constraints: [{ type: not_null }]
+        tests:
+          - not_null
+          # Equivalent of the legacy `EXISTS` validation rule: every
+          # date in the fact must be in the canonical calendar dim.
+          - relationships:
+              to: ref('stg_calendar')
+              field: date
+      - name: subsidiary
+        description: Subsidiary code — pinned to `'HLB'` by a contract CHECK.
+        data_type: text
+        constraints:
+          - type: not_null
+          - type: check
+            expression: "subsidiary = 'HLB'"
+        tests:
+          - accepted_values: { values: ['HLB'] }
+      - name: sku_local
+        description: SKU code as it appears in the HLB source system.
+        data_type: text
+      - name: customer_id_local
+        description: Customer id as it appears in the HLB source system.
+        data_type: text
+      - name: fx_amount
+        description: Line revenue in HLB's local (functional) currency.
+        data_type: numeric
+        constraints: [{ type: not_null }]
+        tests: [not_null]
+      - name: usd_amount
+        description: |
+          Line revenue translated to USD. For HL/HLB this equals
+          `fx_amount` (USD-functional). For other subs the FX translation
+          is applied upstream of the staging layer.
+        data_type: numeric
+        constraints: [{ type: not_null }]
+      - name: quantity
+        description: Units on the revenue line.
+        data_type: numeric
+      - name: transaction_id
+        description: |
+          Composite-built grain key, e.g. `<transaction_id>-<line_order>`.
+          Primary key of the mart.
+        data_type: text
+        constraints: [{ type: not_null }, { type: primary_key }]
+        tests: [unique, not_null]
+      - name: updated_at
+        description: dlt-populated load timestamp from the upstream bronze.
+        data_type: timestamp with time zone
+        constraints: [{ type: not_null }]
+
+  - name: fct_hl__sales
+    description: |
+      HL sales fact at AR-line grain. Built from `int_hl__sales_lines`
+      (AR header + detail + customer + SKU joined), narrowed to revenue
+      accounts (`account like '4%'`). HL is USD-functional, so
+      `fx_amount = usd_amount`.
+    config: { contract: { enforced: true } }
+    columns:
+      - name: date
+        description: Invoice date.
+        data_type: date
+        constraints: [{ type: not_null }]
+        tests:
+          - relationships: { to: ref('stg_calendar'), field: date }
+      - name: subsidiary
+        description: Subsidiary code — pinned to `'HL'` by a contract CHECK.
+        data_type: text
+        constraints:
+          - type: not_null
+          - type: check
+            expression: "subsidiary = 'HL'"
+      - name: sku_local
+        description: SKU code as it appears in the HL source.
+        data_type: text
+      - name: customer_id_local
+        description: Customer id as it appears in the HL source.
+        data_type: text
+      - name: fx_amount
+        description: Line revenue in HL's local currency (USD).
+        data_type: numeric
+        constraints: [{ type: not_null }]
+      - name: usd_amount
+        description: Line revenue in USD (equals `fx_amount` for HL).
+        data_type: numeric
+        constraints: [{ type: not_null }]
+      - name: quantity
+        description: Units on the revenue line.
+        data_type: numeric
+      - name: transaction_id
+        description: |
+          Composite-built grain key,
+          `<invoice_no>-<header_seq_no>-<detail_seq_no>`. Primary key.
+        data_type: text
+        constraints: [{ type: not_null }, { type: primary_key }]
+      - name: updated_at
+        description: dlt-populated load timestamp.
+        data_type: timestamp with time zone
+        constraints: [{ type: not_null }]
+
+  - name: fct_hlc__sales
+    description: |
+      HLC sales fact at line grain. Built from `int_hlc__sales_lines`
+      (header + detail + customer + SKU joined), filtered to revenue
+      lines (`row_type = 1`) using the VAT-excluded amount.
+    config: { contract: { enforced: true } }
+    columns:
+      - name: date
+        description: Sales-document date.
+        data_type: date
+        constraints: [{ type: not_null }]
+        tests:
+          - relationships: { to: ref('stg_calendar'), field: date }
+      - name: subsidiary
+        description: Subsidiary code — pinned to `'HLC'`.
+        data_type: text
+        constraints:
+          - type: not_null
+          - type: check
+            expression: "subsidiary = 'HLC'"
+      - name: sku_local
+        description: SKU code as it appears in the HLC source.
+        data_type: text
+      - name: customer_id_local
+        description: Customer id as it appears in the HLC source.
+        data_type: text
+      - name: fx_amount
+        description: Line revenue in HLC's local currency (CZK).
+        data_type: numeric
+        constraints: [{ type: not_null }]
+      - name: usd_amount
+        description: Line revenue translated to USD.
+        data_type: numeric
+        constraints: [{ type: not_null }]
+      - name: quantity
+        description: Units on the revenue line.
+        data_type: numeric
+      - name: transaction_id
+        description: Composite-built grain, `<doc_num>-<pos_index>`. Primary key.
+        data_type: text
+        constraints: [{ type: not_null }, { type: primary_key }]
+      - name: updated_at
+        description: dlt-populated load timestamp.
+        data_type: timestamp with time zone
+        constraints: [{ type: not_null }]
+
+  - name: fct_hld__sales
+    description: |
+      HLD sales fact at line grain. Built directly from `stg_hld__sales`
+      — the HLD source already publishes line-grain rows, so no
+      intermediate composer is needed.
+    config: { contract: { enforced: true } }
+    columns:
+      - name: date
+        description: Sales-document date.
+        data_type: date
+        constraints: [{ type: not_null }]
+        tests:
+          - relationships: { to: ref('stg_calendar'), field: date }
+      - name: subsidiary
+        description: Subsidiary code — pinned to `'HLD'`.
+        data_type: text
+        constraints:
+          - type: not_null
+          - type: check
+            expression: "subsidiary = 'HLD'"
+      - name: sku_local
+        description: SKU code as it appears in the HLD source.
+        data_type: text
+      - name: customer_id_local
+        description: Customer number from the HLD source.
+        data_type: text
+      - name: fx_amount
+        description: Line revenue in HLD's local currency (EUR).
+        data_type: numeric
+        constraints: [{ type: not_null }]
+      - name: usd_amount
+        description: Line revenue translated to USD.
+        data_type: numeric
+        constraints: [{ type: not_null }]
+      - name: quantity
+        description: Units on the revenue line.
+        data_type: numeric
+      - name: transaction_id
+        description: Composite-built grain, `<doc_id>-<detail_id>`. Primary key.
+        data_type: text
+        constraints: [{ type: not_null }, { type: primary_key }]
+      - name: updated_at
+        description: dlt-populated load timestamp.
+        data_type: timestamp with time zone
+        constraints: [{ type: not_null }]
+
+  - name: fct_hlm__sales
+    description: |
+      HLM sales fact at line grain. Built directly from `stg_hlm__sales`.
+      `customer_id_local` is taken from `customer_name` because the
+      HLM source has no separate stable customer id.
+    config: { contract: { enforced: true } }
+    columns:
+      - name: date
+        description: Sales-document date.
+        data_type: date
+        constraints: [{ type: not_null }]
+        tests:
+          - relationships: { to: ref('stg_calendar'), field: date }
+      - name: subsidiary
+        description: Subsidiary code — pinned to `'HLM'`.
+        data_type: text
+        constraints:
+          - type: not_null
+          - type: check
+            expression: "subsidiary = 'HLM'"
+      - name: sku_local
+        description: SKU code as it appears in the HLM source.
+        data_type: text
+      - name: customer_id_local
+        description: Customer name (HLM exposes no separate customer id).
+        data_type: text
+      - name: fx_amount
+        description: Line revenue in HLM's local currency.
+        data_type: numeric
+        constraints: [{ type: not_null }]
+      - name: usd_amount
+        description: Line revenue translated to USD.
+        data_type: numeric
+        constraints: [{ type: not_null }]
+      - name: quantity
+        description: Units on the revenue line.
+        data_type: numeric
+      - name: transaction_id
+        description: Composite-built grain, `<id>-<line_number>`. Primary key.
+        data_type: text
+        constraints: [{ type: not_null }, { type: primary_key }]
+      - name: updated_at
+        description: dlt-populated load timestamp.
+        data_type: timestamp with time zone
+        constraints: [{ type: not_null }]
+
+  - name: fct_hlp__sales
+    description: |
+      HLP sales fact at line grain. Built directly from `stg_hlp__sales`
+      using the per-line revenue (`detail_amount`).
+    config: { contract: { enforced: true } }
+    columns:
+      - name: date
+        description: Sales-document date.
+        data_type: date
+        constraints: [{ type: not_null }]
+        tests:
+          - relationships: { to: ref('stg_calendar'), field: date }
+      - name: subsidiary
+        description: Subsidiary code — pinned to `'HLP'`.
+        data_type: text
+        constraints:
+          - type: not_null
+          - type: check
+            expression: "subsidiary = 'HLP'"
+      - name: sku_local
+        description: SKU code as it appears in the HLP source.
+        data_type: text
+      - name: customer_id_local
+        description: Customer id from the HLP source.
+        data_type: text
+      - name: fx_amount
+        description: Line revenue in HLP's local currency (PLN).
+        data_type: numeric
+        constraints: [{ type: not_null }]
+      - name: usd_amount
+        description: Line revenue translated to USD.
+        data_type: numeric
+        constraints: [{ type: not_null }]
+      - name: quantity
+        description: Units on the revenue line.
+        data_type: numeric
+      - name: transaction_id
+        description: Composite-built grain, `<invoice_id>-<detail_id>`. Primary key.
+        data_type: text
+        constraints: [{ type: not_null }, { type: primary_key }]
+      - name: updated_at
+        description: dlt-populated load timestamp.
+        data_type: timestamp with time zone
+        constraints: [{ type: not_null }]
+
+  - name: fct_hls__sales
+    description: |
+      HLS sales fact at line grain. Built from `int_hls__sales`,
+      which derives sales from GL revenue postings (account `90.01.1`)
+      because HLS has no separate sales document hierarchy.
+    config: { contract: { enforced: true } }
+    columns:
+      - name: date
+        description: GL posting date.
+        data_type: date
+        constraints: [{ type: not_null }]
+        tests:
+          - relationships: { to: ref('stg_calendar'), field: date }
+      - name: subsidiary
+        description: Subsidiary code — pinned to `'HLS'`.
+        data_type: text
+        constraints:
+          - type: not_null
+          - type: check
+            expression: "subsidiary = 'HLS'"
+      - name: sku_local
+        description: SKU resolved via the HLS dimension catalog.
+        data_type: text
+      - name: customer_id_local
+        description: Partner name resolved via the HLS dimension catalog.
+        data_type: text
+      - name: fx_amount
+        description: Line revenue in HLS's local currency.
+        data_type: numeric
+        constraints: [{ type: not_null }]
+      - name: usd_amount
+        description: Line revenue translated to USD.
+        data_type: numeric
+        constraints: [{ type: not_null }]
+      - name: quantity
+        description: Units on the revenue line.
+        data_type: numeric
+      - name: transaction_id
+        description: Composite-built grain, `<id>-<line_number>`. Primary key.
+        data_type: text
+        constraints: [{ type: not_null }, { type: primary_key }]
+      - name: updated_at
+        description: dlt-populated load timestamp.
+        data_type: timestamp with time zone
+        constraints: [{ type: not_null }]

@@ -1,0 +1,36 @@
+version: 2
+
+sources:
+  - name: bronze_account_mapping
+    description: Cross-subsidiary account-mapping bronze.
+    schema: bronze_account_mapping
+    tables:
+      - name: account_mapping_import
+        description: GL account → COA-node mapping per (system, account).
+      - name: coa_node_import
+        description: COA node hierarchy (sourced from a managed-document service).
+      - name: ico_definitions_import
+        description: Intercompany relationship definitions.
+
+  - name: bronze_customer_mapping
+    description: Cross-subsidiary customer-mapping bronze.
+    schema: bronze_customer_mapping
+    tables:
+      - name: country_dictionary_import
+        description: source_country → use_country/region normalization.
+      - name: customer_mapping_import
+        description: Per-system unmapped customers, awaiting mapping.
+
+  - name: bronze_sku_mapping
+    description: Cross-subsidiary SKU-mapping bronze.
+    schema: bronze_sku_mapping
+    tables:
+      - name: skus_add_import
+        description: Proposed additions to the global SKU master.
+
+  - name: bronze_exchange_rates
+    description: FX rates landing zone.
+    schema: bronze_exchange_rates
+    tables:
+      - name: current_rates_import
+        description: Daily rates by (date, currency).

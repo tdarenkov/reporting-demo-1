@@ -1,0 +1,26 @@
+version: 2
+
+models:
+  - name: stg_calendar
+    description: |
+      Canonical date dimension. Pass-through from `silver_calendar.date_table`
+      (populated from the demo parquet by `load_demo_data.py`). Exposed as
+      a staging model so per-subsidiary `fct_<sub>__sales` marts can run
+      a `relationships:` test against `date`.
+    columns:
+      - name: date
+        description: Calendar date — primary key of the dimension.
+        tests: [unique, not_null]
+      - name: year
+        description: Four-digit calendar year.
+        tests: [not_null]
+      - name: month
+        description: Month number (1–12).
+        tests: [not_null]
+      - name: yearmonth
+        description: "Composite year-month key, e.g. 202604."
+        tests: [not_null]
+      - name: day_of_week
+        description: Day name (`Monday`, `Tuesday`, …).
+      - name: quarter
+        description: Quarter label (`Q1`–`Q4`).

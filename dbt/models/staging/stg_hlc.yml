@@ -1,0 +1,128 @@
+version: 2
+
+models:
+  - name: stg_hlc__gl
+    description: |
+      HLC general-ledger detail — typed pass-through. The HLC source uses
+      double-entry posting with separate `account_dr` / `account_cr`
+      columns rather than a single signed `account` + `amount`.
+    columns:
+      - name: id
+        description: Source GL row ID.
+        tests: [not_null]
+      - name: obj_version
+        description: Source object-version stamp (used for change tracking upstream).
+      - name: date
+        description: Posting date.
+        tests: [not_null]
+      - name: accdoc_queue_id
+        description: Reference to the originating accounting document.
+      - name: ord_num
+        description: Source order number.
+      - name: account_dr
+        description: Debit account.
+      - name: account_cr
+        description: Credit account.
+      - name: amount
+        description: Posting amount (always positive — sign carried by DR/CR).
+        tests: [not_null]
+      - name: firm_id
+        description: Multi-tenant firm identifier in the source.
+      - name: updated_at
+        tests: [not_null]
+
+  - name: stg_hlc__sales_headers
+    description: HLC sales document headers — one row per sales document.
+    columns:
+      - name: doc_num
+        description: Sales document number — header grain.
+        tests: [not_null]
+      - name: obj_version
+      - name: ord_num
+      - name: date
+        description: Document date.
+        tests: [not_null]
+      - name: amount
+        description: Document total (gross).
+      - name: amount_no_vat
+        description: Document total excluding VAT.
+      - name: trade_type
+        description: Trade classification code.
+      - name: customer_code
+        description: Customer reference (foreign key to `stg_hlc__customers.customer_code`).
+      - name: id
+        description: Source row id (used to join sales_details on `parent_id`).
+        tests: [not_null]
+      - name: accdoc_queue_id
+      - name: accdoc_queue_id_obj_version
+      - name: updated_at
+        tests: [not_null]
+
+  - name: stg_hlc__sales_details
+    description: |
+      HLC sales line detail. The intermediate `int_hlc__sales_lines`
+      filters to `row_type = 1` to drop tax/discount lines.
+    columns:
+      - name: parent_id
+        description: Foreign key to `stg_hlc__sales_headers.id`.
+        tests: [not_null]
+      - name: pos_index
+        description: Line position within the document.
+        tests: [not_null]
+      - name: amount
+        description: Gross line amount.
+      - name: amount_no_vat
+        description: Line amount excluding VAT (this is the revenue figure).
+      - name: row_type
+        description: |
+          Detail-line classification. Real revenue lines are `row_type = 1`;
+          other values are tax/discount/freight lines that the
+          `int_hlc__sales_lines` filters out.
+      - name: quantity
+        description: Units sold on the line.
+      - name: sku
+        description: SKU code.
+      - name: text
+        description: Line description / free-text.
+      - name: updated_at
+        tests: [not_null]
+
+  - name: stg_hlc__accounts
+    description: HLC chart of accounts — typed pass-through.
+    columns:
+      - name: account
+        description: Account code — primary key.
+        tests: [unique, not_null]
+      - name: account_name
+      - name: account_type
+      - name: updated_at
+        tests: [not_null]
+
+  - name: stg_hlc__customers
+    description: |
+      HLC customers, with a `'No Country'` sentinel for null country.
+      The source has both `customer_id` and a friendlier `customer_code`;
+      sales headers reference the latter.
+    columns:
+      - name: customer_id
+        description: Internal customer id.
+      - name: customer_code
+        description: Customer reference used by sales documents — primary key here.
+        tests: [unique, not_null]
+      - name: customer_name
+      - name: customer_country
+        description: Country with `'No Country'` sentinel substitution.
+        tests: [not_null]
+      - name: updated_at
+        tests: [not_null]
+
+  - name: stg_hlc__skus
+    description: HLC SKU master — typed pass-through.
+    columns:
+      - name: sku
+        description: SKU code — primary key.
+        tests: [unique, not_null]
+      - name: sku_name
+      - name: vendor_code
+      - name: updated_at
+        tests: [not_null]

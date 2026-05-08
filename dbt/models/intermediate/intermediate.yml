@@ -1,0 +1,111 @@
+version: 2
+
+# Intermediate models are materialized as `ephemeral` (see
+# dbt_project.yml). They do NOT exist as DB objects — dbt inlines the
+# SELECT into any model that ref()s them, as a CTE at compile time.
+# Their job is to let multiple marts share the same join logic without
+# committing a view to the silver schema.
+
+models:
+  - name: int_hl__sales_lines
+    description: |
+      HL AR header + line + customer + SKU joined to one row per AR
+      detail line. Composes `stg_hl__ar_headers`, `stg_hl__ar_details`,
+      `stg_hl__customers`, and `stg_hl__skus`. Consumed by `fct_hl__sales`,
+      which narrows further to revenue accounts (`account like '4%'`).
+    columns:
+      - name: date
+        description: Invoice date from the AR header.
+      - name: invoice_no
+        description: Invoice identifier — part of the composite grain.
+      - name: header_seq_no
+        description: Header sequence — part of the composite grain.
+      - name: detail_seq_no
+        description: Detail-line sequence — part of the composite grain.
+      - name: account
+        description: Sales account from the AR detail line.
+      - name: customer_id
+      - name: customer_name
+      - name: customer_country
+      - name: sku
+      - name: sku_name
+      - name: amount
+        description: Line revenue amount.
+      - name: quantity
+      - name: updated_at
+
+  - name: int_hlb__gl_enriched
+    description: |
+      HLB GL detail enriched with account, customer, and SKU master data.
+      Ephemeral, so no DB object is created — the SELECT inlines into any
+      ref()'ing model as a CTE. The mart filters this CTE down to
+      `account_type = 'Income'` and excludes the discount account
+      (`!= '4010'`).
+    columns:
+      - name: transaction_id
+        description: Source-system transaction id — part of the composite grain.
+      - name: line_order
+        description: Line within the transaction — part of the composite grain.
+      - name: date
+      - name: account
+      - name: account_type
+        description: Top-level account type (used to gate revenue lines).
+      - name: account_full_name
+      - name: customer_id
+      - name: customer_name
+      - name: customer_country
+      - name: sku
+      - name: sku_name
+      - name: amount
+        description: |
+          Signed posting amount. The mart flips the sign for revenue
+          (debits to revenue accounts are stored negative in the source).
+      - name: quantity
+      - name: updated_at
+
+  - name: int_hlc__sales_lines
+    description: |
+      HLC sales header + detail + customer + SKU joined per detail line.
+      Filters `row_type = 1` to drop tax/discount/freight detail rows.
+      Uses `amount_no_vat` as the revenue figure (gross-of-tax `amount`
+      is dropped).
+    columns:
+      - name: date
+        description: Sales-document date.
+      - name: doc_num
+        description: Document number (header grain).
+      - name: parent_id
+        description: Header `id` the detail belongs to.
+      - name: pos_index
+        description: Detail position within the document — composite grain.
+      - name: customer_id
+      - name: customer_name
+      - name: customer_country
+      - name: sku
+      - name: sku_name
+      - name: amount
+        description: Line revenue, VAT-excluded (`amount_no_vat`).
+      - name: quantity
+      - name: updated_at
+
+  - name: int_hls__sales
+    description: |
+      HLS sales — derived from GL revenue postings (account `90.01.1`)
+      joined to the partner + SKU catalogs via the `dim_dr1` and
+      `dim_cr1` reference columns. There is no separate sales
+      header/detail in the HLS source — sales recognition lives in the GL.
+    columns:
+      - name: date
+      - name: id
+        description: Source GL row id — part of the composite grain.
+      - name: line_number
+        description: Line within the source row — part of the composite grain.
+      - name: customer_name
+        description: Resolved partner name from `stg_hls__partners`.
+      - name: sku_local
+        description: SKU code resolved from `stg_hls__skus`.
+      - name: amount
+        description: Line revenue amount.
+      - name: quantity
+        description: Units (`quantity_credit` from the GL row).
+      - name: updated_at

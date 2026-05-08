@@ -1,0 +1,35 @@
+version: 2
+
+sources:
+  - name: bronze_hlb
+    description: |
+      Raw landing tables for HLB. Owned by pipelines/subsidiaries/hlb.py
+      via dlt; dbt only reads from them.
+    schema: bronze_hlb
+    tables:
+      - name: gl_import
+        description: GL detail rows (one row per posting line).
+        columns:
+          - name: transaction_id
+            description: Source-system transaction ID.
+          - name: account
+            description: Account number (or account_name when number is missing).
+          - name: amount
+            description: Signed amount (positive = debit, negative = credit).
+      - name: gl_accounts_import
+        description: Chart of accounts for HLB.
+        columns:
+          - name: account_number
+            description: |
+              Primary key for the account. Falls back to parent_account_name
+              or account_name when the source omits it.
+      - name: customers_import
+        description: Customer master.
+        columns:
+          - name: customer_id
+            description: Primary key.
+      - name: skus_import
+        description: SKU master.
+        columns:
+          - name: sku
+            description: Primary key.

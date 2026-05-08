@@ -1,0 +1,131 @@
+version: 2
+
+models:
+  - name: stg_hlm__gl
+    description: |
+      HLM general-ledger detail — typed pass-through of the bronze
+      `gl_import` JSON. HLM uses a 3+3-dimension model: each posting has
+      separate debit and credit dimension slots
+      (`dim_dr1_*`, `dim_dr2_*`, `dim_cr1_*`, `dim_cr2_*`).
+    columns:
+      - name: date
+        description: Posting date.
+        tests: [not_null]
+      - name: org
+        description: Organization unit within the source 1C-style system.
+      - name: id
+        description: Source GL row id.
+        tests: [not_null]
+      - name: line_number
+        description: Line within the source row. Composite key with `id`.
+        tests: [not_null]
+      - name: account_dr
+        description: Debit account.
+      - name: dim_dr1_type
+      - name: dim_dr1_value
+      - name: dim_dr2_type
+      - name: dim_dr2_value
+      - name: account_cr
+        description: Credit account.
+      - name: dim_cr1_type
+      - name: dim_cr1_value
+      - name: dim_cr2_type
+      - name: dim_cr2_value
+      - name: contents
+        description: Posting narrative / free-text description.
+      - name: amount
+        description: Posting amount (positive — sign comes from DR/CR).
+        tests: [not_null]
+      - name: quantity_credit
+        description: Units on the credit side (revenue quantities).
+      - name: updated_at
+        tests: [not_null]
+
+  - name: stg_hlm__sales
+    description: |
+      HLM sales — line-grain pass-through. Feeds `fct_hlm__sales` directly;
+      `customer_id_local` in the mart is taken from `customer_name` since
+      HLM source doesn't expose a stable customer key.
+    columns:
+      - name: date
+        tests: [not_null]
+      - name: org
+      - name: id
+        tests: [not_null]
+      - name: line_number
+        tests: [not_null]
+      - name: customer_name
+        description: |
+          Customer display name (HLM source has no separate customer id).
+      - name: vat_rate_text
+        description: VAT rate as the source records it (free-text).
+      - name: sku
+      - name: sku_code
+      - name: sku_name
+      - name: sku_full_name
+      - name: contents
+      - name: amount
+        tests: [not_null]
+      - name: quantity
+      - name: updated_at
+        tests: [not_null]
+
+  - name: stg_hlm__costs
+    description: HLM costs — line-grain pass-through (parallel to `stg_hlm__sales`).
+    columns:
+      - name: date
+        tests: [not_null]
+      - name: org
+      - name: id
+        tests: [not_null]
+      - name: line_number
+        tests: [not_null]
+      - name: sku
+      - name: sku_code
+      - name: sku_name
+      - name: contents
+      - name: amount
+        tests: [not_null]
+      - name: quantity
+      - name: updated_at
+        tests: [not_null]
+
+  - name: stg_hlm__accounts
+    description: HLM chart of accounts. Includes optional sub-account dimensions.
+    columns:
+      - name: account
+        description: Account code — primary key.
+        tests: [unique, not_null]
+      - name: account_name
+      - name: account_type
+      - name: subaccount_1
+      - name: subaccount_2
+      - name: updated_at
+        tests: [not_null]
+
+  - name: stg_hlm__customers
+    description: |
+      HLM customers. Country falls back to `'No Country'` when the source
+      omits it.
+    columns:
+      - name: customer_id
+        tests: [unique, not_null]
+      - name: customer_name
+      - name: customer_country
+        tests: [not_null]
+      - name: updated_at
+        tests: [not_null]
+
+  - name: stg_hlm__skus
+    description: HLM SKU master — typed pass-through.
+    columns:
+      - name: sku_id
+        description: Internal SKU id from the source.
+      - name: sku
+        description: SKU code — primary key.
+        tests: [unique, not_null]
+      - name: sku_name
+      - name: sku_full_name
+      - name: item_type
+      - name: updated_at
+        tests: [not_null]
