@@ -1,4 +1,4 @@
-"""Apply warehouse DDL to a Postgres database (e.g. Neon).
+"""Apply warehouse DDL to a Postgres database.
 
 Reads DATABASE_URL from the environment (or .env at the repo root) and applies
 every .sql file under warehouse/ddl/{bronze,silver,gold}/ in alphabetical order
@@ -10,7 +10,6 @@ Usage:
 """
 from __future__ import annotations
 
-import json
 import os
 import sys
 from pathlib import Path
@@ -19,20 +18,14 @@ import psycopg
 from dotenv import load_dotenv
 
 DDL_ROOT = Path(__file__).resolve().parent.parent / "ddl"
+# Bronze is dlt-managed (the pipelines/ package), gold is reserved for future
+# use — only silver/ ships DDL today. Missing layers are skipped below.
 LAYERS = ("bronze", "silver", "gold")
 
 
 def ordered_files(layer_dir: Path) -> list[Path]:
-    """Return DDL files in dependency order.
-
-    Uses layer_dir/deploy/deploy_order.json when present (tiers → files list).
-    Falls back to alphabetical order.
-    """
-    order_file = layer_dir / "deploy" / "deploy_order.json"
-    if not order_file.is_file():
-        return sorted(layer_dir.glob("*.sql"))
-    tiers = json.loads(order_file.read_text())["tiers"]
-    return [layer_dir / fname for tier in tiers for fname in tier["files"]]
+    """DDL files for a layer, applied in alphabetical order."""
+    return sorted(layer_dir.glob("*.sql"))
 
 
 def main() -> int:

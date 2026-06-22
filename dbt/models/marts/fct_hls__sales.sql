@@ -1,11 +1,15 @@
+/* HLS sales fact — local INR amounts translated to USD via stg__exchange_rates. */
 select
-    date,
-    'HLS'::text                  as subsidiary,
-    sku_local,
-    customer_name                as customer_id_local,
-    amount::numeric(14, 2)       as fx_amount,
-    amount::numeric(14, 2)       as usd_amount,
-    quantity,
-    id || '-' || line_number     as transaction_id,
-    updated_at
-from {{ ref('int_hls__sales') }}
+    s.date,
+    'HLS'::text                                          as subsidiary,
+    s.sku_local,
+    s.customer_name                                      as customer_id_local,
+    s.amount::numeric(14, 2)                             as fx_amount,
+    round(s.amount * fx.rate_to_usd, 2)::numeric(14, 2)  as usd_amount,
+    s.quantity,
+    s.id || '-' || s.line_number                         as transaction_id,
+    s.updated_at
+from {{ ref('int_hls__sales') }} s
+left join {{ ref('stg__exchange_rates') }} fx
+       on fx.yearmonth = extract(year from s.date)::int * 100 + extract(month from s.date)::int
+      and fx.currency = 'INR'

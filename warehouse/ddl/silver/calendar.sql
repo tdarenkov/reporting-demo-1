@@ -9,7 +9,9 @@ CREATE SCHEMA IF NOT EXISTS silver_calendar;
     Populated by materialize @schema='calendar', @target='date_table'.
     PK on date enables FK from subsidiary transaction tables.
 
-    Pipeline order: exchange_rates merge -> materialize calendar -> subsidiary merges
+    Pipeline order: materialize calendar -> subsidiary merges. FX rates ship
+    as the dbt `exchange_rates` seed (staged by stg__exchange_rates), not a
+    warehouse merge.
 */
 CREATE TABLE IF NOT EXISTS silver_calendar.date_table (
     date                date            NOT NULL PRIMARY KEY,

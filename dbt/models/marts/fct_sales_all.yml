@@ -52,8 +52,9 @@ models:
         tests: [not_null]
       - name: usd_amount
         description: |
-          Line revenue translated to USD. Equals `fx_amount` for the
-          USD-functional subs (HL/HLB); FX-translated for the others.
+          Line revenue in USD. Equals `fx_amount` for the USD-functional
+          subs (HL/HLB); for the others it is `round(fx_amount * rate_to_usd, 2)`,
+          translated in each per-sub mart via a join to `stg__exchange_rates`.
         data_type: numeric
         constraints: [{ type: not_null }]
       - name: quantity

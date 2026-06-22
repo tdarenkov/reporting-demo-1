@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from io import StringIO
 from pathlib import Path
 
@@ -23,7 +23,7 @@ from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[2]
 DEMO = ROOT / "demo"
-NOW = datetime.utcnow().replace(microsecond=0)
+NOW = datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
 
 
 def load_calendar(cur: psycopg.Cursor) -> int:

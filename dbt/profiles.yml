@@ -1,4 +1,4 @@
-acme:
+reporting_demo:
   target: dev
   outputs:
     dev:

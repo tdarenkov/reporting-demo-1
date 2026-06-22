@@ -1,11 +1,12 @@
 # reporting-demo-1
 
 A small financial-reporting data platform: medallion warehouse on
-Postgres (Neon), seven subsidiary entities, a Python ingestion layer
+Postgres, seven subsidiary entities, a Python ingestion layer
 that lands source files into bronze, and a dbt project that shapes
 silver marts on top.
 
 📊 **Live lineage / docs:** https://comillion.io/reporting-demo-1/
+📈 **Live dashboard (Looker Studio):** https://datastudio.google.com/reporting/b5befb84-a195-47cd-bec2-8b40c00f3473/
 
 The original implementation ran on Microsoft Fabric Warehouse with T-SQL
 stored procedures. This version ports the warehouse to Postgres,
@@ -33,22 +34,26 @@ dbt/                          dbt-core project (bronze → silver transforms)
   tests/                      Singular SQL tests
   run.py                      Wrapper that points dbt at DATABASE_URL
 
-tests/                        78 pytest tests over the pure helpers
+tests/                        87 pytest tests over the pure helpers
 
 demo/
   *.parquet                   Synthetic silver-shape dataset (395k sales rows)
-  sources/                    Synthetic per-subsidiary source files
-                              that the pipelines/ package consumes
-  load_bigquery.ipynb         Optional alternate path: load demo
-                              parquets into BigQuery
+  sources/                    Per-subsidiary source files the pipelines/
+                              package consumes. NOT included — they model a
+                              redacted live source environment (see the note
+                              under Quick start).
+  load_bigquery.ipynb         BigQuery artifact: loads the demo parquets
+                              into BigQuery to power a Looker Studio
+                              dashboard (see Visualization below)
   sales_report_view.sql       Cross-sub reporting view definition
 ```
 
 ## Quick start
 
 ```bash
-# 1. Create a free Neon project at https://console.neon.tech, copy the
-#    connection string for the "warehouse" database.
+# 1. Provision a Postgres database named "warehouse" and copy its
+#    connection string (any host works — e.g. a local Postgres or any
+#    managed provider).
 
 # 2. Configure + install
 cp .env.example .env                                # paste DATABASE_URL
@@ -75,6 +80,15 @@ psql $DATABASE_URL -c "
   ORDER BY 3 DESC;
 "
 ```
+
+> **Note — source files not included.** The per-subsidiary inputs under
+> `demo/sources/` model a redacted live source environment and aren't shipped
+> in this public repo, so steps 4–5 (the `pipelines/` ingest and the dbt build
+> on top of it) are presented as code rather than run here. The committed
+> `demo/*.parquet` are the built outputs, and the FX-translation layer is
+> verified offline by `pytest tests/test_exchange_rates.py`. Exchange rates are
+> the one exception: they ship as a dbt seed (`dbt/seeds/exchange_rates.csv`)
+> because FX data is public, not client data.
 
 ## Architecture
 
@@ -145,7 +159,7 @@ machinery collapses into declarative configuration:
 ## The Python ingest layer (`pipelines/`)
 
 Thirteen Python modules that port the original Fabric notebooks to a
-clean package targeting Neon. The shape is uniform:
+clean package targeting Postgres. The shape is uniform:
 
 ```python
 @dlt.resource(name="gl_import", write_disposition="replace")
@@ -258,25 +272,33 @@ int_hlb__gl_enriched          (ephemeral — inlined as a CTE)
 silver_dbt.fct_hlb__sales     (table — report-facing fact)
 ```
 
-**`dbt build` summary:** 36 view models + 8 table models + 49 data tests.
-Roughly 22s end-to-end on Neon.
+**`dbt build`** materializes the staging views (including `stg__exchange_rates`,
+built from the `exchange_rates` seed), the eight table marts, and the data tests.
 
-**Cross-sub sales totals** (post-build, from `silver_dbt.fct_sales_all`):
+**FX translation.** Each non-USD mart fills `usd_amount` by joining
+`stg__exchange_rates` on `(date, currency)`:
+`usd_amount = round(fx_amount * rate_to_usd, 2)`. HL and HLB are USD-functional
+(rate = 1). After a build you can check the cross-sub mart:
 
 ```sql
-SELECT subsidiary, COUNT(*) AS rows, SUM(usd_amount)::numeric(14,2) AS total_usd
+SELECT subsidiary, SUM(fx_amount) AS local, SUM(usd_amount) AS usd
 FROM silver_dbt.fct_sales_all GROUP BY subsidiary ORDER BY 3 DESC;
 ```
 
-| Subsidiary | Rows | Total USD |
-|---|---|---|
-| HLM | 817 | $100,115,828 |
-| HLS | 631 | $51,082,103 |
-| HLC | 749 | $29,499,824 |
-| HLB | 1,130 | $13,960,152 |
-| HLP | 833 | $7,782,524 |
-| HL | 758 | $5,572,399 |
-| HLD | 643 | $4,181,312 |
+Per-subsidiary local-currency vs. USD over the committed reference dataset
+(`demo/sales_data.parquet`) — these USD totals are what
+`tests/test_exchange_rates.py` reproduces from the seed + mart formula:
+
+| Subsidiary | Currency | Local total | USD total |
+|---|---|---:|---:|
+| HLD | EUR | 177,163,000   | $198,276,000 |
+| HL  | USD | 161,687,308   | $161,687,308 |
+| HLP | PLN | 359,555,800   |  $92,327,124 |
+| HLM | INR | 7,089,810,000 |  $90,230,360 |
+| HLS | INR | 4,632,481,000 |  $53,550,144 |
+| HLB | USD | 39,510,292    |  $39,510,292 |
+| HLC | CZK | 157,743,600   |   $7,057,397 |
+| **Total** | | | **$642,638,605** |
 
 **Run patterns:**
 
@@ -287,21 +309,33 @@ python dbt/run.py run --select +marts        # marts and their upstreams
 python dbt/run.py test --select stg_hlb__gl  # tests on one model
 ```
 
+## Visualization
+
+`demo/load_bigquery.ipynb` is a standalone BigQuery artifact — it loads the
+committed `demo/*.parquet` into BigQuery and builds the `sales_report` view
+(`demo/sales_report_view.sql`) that backs the [Looker Studio dashboard](https://datastudio.google.com/reporting/b5befb84-a195-47cd-bec2-8b40c00f3473/page/p_ehawbi0t2d)
+linked at the top of this README. This is a separate path from the Postgres/dbt
+warehouse above — it exists only to power the visualization, not as part of
+the pipeline.
+
 ## Tests
 
 ```bash
-pytest tests/        # 78 tests in ~1s
+pytest tests/        # 87 tests in ~1s
 ```
 
 Coverage is the pure-function surface — coercers, the SEPA tag parser,
 name normalization, fuzzy matching, the four trial-balance parsers,
-filename-date extraction, the redundant-field handler, and so on.
+filename-date extraction, the redundant-field handler, and so on. It also
+includes `test_exchange_rates.py`, which proves the FX seed + mart formula
+reproduce the reference `usd_amount` (the offline check that the currency
+translation is correct, since the subsidiary sources aren't shipped).
 The dlt resources themselves aren't unit-tested; they're exercised by
 the end-to-end run.
 
 ## Tech
 
-Postgres 17 (Neon), Python 3.11, [dbt-core](https://docs.getdbt.com)
+Postgres 17, Python 3.11, [dbt-core](https://docs.getdbt.com)
 1.11 (`postgres` adapter), [dlt](https://dlthub.com)
 (`postgres` destination), [psycopg 3](https://www.psycopg.org/),
 pandas, pyarrow, openpyxl, pytest.

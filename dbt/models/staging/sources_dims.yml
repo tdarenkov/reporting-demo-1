@@ -28,9 +28,6 @@ sources:
       - name: skus_add_import
         description: Proposed additions to the global SKU master.
 
-  - name: bronze_exchange_rates
-    description: FX rates landing zone.
-    schema: bronze_exchange_rates
-    tables:
-      - name: current_rates_import
-        description: Daily rates by (date, currency).
+# FX rates are not a bronze source in this demo — they ship as the
+# `exchange_rates` seed and are staged by `stg__exchange_rates`
+# (public Open Exchange Rates data; see dbt/seeds/exchange_rates.csv).

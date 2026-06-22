@@ -12,11 +12,11 @@ from . import config
 
 
 def unpooled(dsn: str) -> str:
-    """Strip Neon's `-pooler` host suffix.
+    """Strip a `-pooler` host suffix if present.
 
-    Neon's PgBouncer pooler doesn't accept the `search_path` startup parameter
-    that dlt sets via psycopg2. The unpooled endpoint accepts it. For our
-    workload (small batch ingest) the pool isn't load-bearing.
+    Some managed-Postgres PgBouncer poolers don't accept the `search_path`
+    startup parameter that dlt sets via psycopg2; the unpooled endpoint accepts
+    it. For our workload (small batch ingest) the pool isn't load-bearing.
     """
     return dsn.replace("-pooler.", ".")
 

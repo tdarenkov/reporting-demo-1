@@ -15,4 +15,4 @@ select
     updated_at
 from {{ ref('int_hlb__gl_enriched') }}
 where account_type = 'Income'
-  and account != '4010'
+  and account != '4010'   -- exclude the discount account (see marts.yml: fct_hlb)

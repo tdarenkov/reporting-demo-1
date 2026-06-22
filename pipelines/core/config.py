@@ -15,7 +15,7 @@ SUBSIDIARIES = ("HL", "HLB", "HLC", "HLD", "HLM", "HLP", "HLS")
 
 
 def database_url() -> str:
-    """Resolve the Neon connection string from .env or environment."""
+    """Resolve the Postgres connection string from .env or environment."""
     load_dotenv(REPO_ROOT / ".env")
     dsn = os.environ.get("DATABASE_URL")
     if not dsn:

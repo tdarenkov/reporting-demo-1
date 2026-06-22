@@ -1,4 +1,4 @@
-"""Wrapper that runs dbt against this project against the Neon DATABASE_URL.
+"""Wrapper that runs dbt against this project against the DATABASE_URL.
 
 dbt's postgres adapter reads PGHOST / PGPORT / PGUSER / PGPASSWORD /
 PGDATABASE separately. Our repo carries a single DATABASE_URL in .env
@@ -6,8 +6,9 @@ PGDATABASE separately. Our repo carries a single DATABASE_URL in .env
 
   1. Loads .env from the repo root.
   2. Parses DATABASE_URL into the PG* parts.
-  3. Strips Neon's `-pooler` host suffix (the pooler doesn't support
-     dbt's startup parameters, same workaround as pipelines/core/loaders).
+  3. Strips a `-pooler` host suffix if present (some managed Postgres
+     poolers don't support dbt's startup parameters, same workaround as
+     pipelines/core/loaders).
   4. Sets DBT_PROFILES_DIR to this directory so we don't depend on
      ~/.dbt/.
   5. Forwards the remaining argv to dbt and exits with its return code.

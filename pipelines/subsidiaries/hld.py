@@ -28,7 +28,7 @@ import re
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Iterator, TypedDict
+from typing import Iterator, NamedTuple, TypedDict
 
 import dlt
 import psycopg
@@ -385,10 +385,11 @@ def hld_source():
 # ---------------------------------------------------------------------------
 # SILVER — bank-transaction matching.
 #
-# Procedural enrichment that's awkward in SQL: normalize names (accents to
-# ASCII, strip legal-form suffixes), tokenize, and fuzzy-match a bank line's
-# beneficiary against the counterparty list to assign a counterparty number.
-# Writes directly to silver_hld.bank_transactions.
+# Deliberate exception to the "pipelines own bronze, dbt owns silver" split:
+# this enrichment is procedural and awkward in SQL — normalize names (accents
+# to ASCII, strip legal-form suffixes), tokenize, and fuzzy-match a bank line's
+# beneficiary against the counterparty list to assign a counterparty number —
+# so it stays in Python and writes directly to silver_hld.bank_transactions.
 # ---------------------------------------------------------------------------
 
 ACCENT_TO_ASCII = {
@@ -427,25 +428,33 @@ def jaccard_token_overlap(a: str, b: str) -> float:
     return len(sa & sb) / len(sa | sb)
 
 
-def match_counterparty(bank_row: dict, candidates: list[dict]) -> dict | None:
+class CounterpartyMatch(NamedTuple):
+    """A resolved counterparty plus how it was matched (so the caller doesn't
+    have to re-derive the method or re-run the fuzzy score)."""
+    counterparty: dict
+    method: str            # "iban" | "customer_hint" | "fuzzy_name"
+    score: float | None    # Jaccard score for "fuzzy_name", else None
+
+
+def match_counterparty(bank_row: dict, candidates: list[dict]) -> CounterpartyMatch | None:
     """Pick the best counterparty for a bank transaction.
 
     Match priority:
       1. Exact IBAN match.
       2. Customer-number hint embedded in the SVWZ tag (`KNr. XXXXX`).
       3. Fuzzy name match (Jaccard ≥ 0.5).
-    Returns the matched counterparty or None.
+    Returns a CounterpartyMatch (counterparty + method + score) or None.
     """
     if bank_row.get("iban"):
         for c in candidates:
             if c["iban"] and bank_row["iban"] == c["iban"]:
-                return c
+                return CounterpartyMatch(c, "iban", None)
 
     hint = bank_row.get("customer_number_hint")
     if hint:
         for c in candidates:
             if c["customer_number"] == hint:
-                return c
+                return CounterpartyMatch(c, "customer_hint", None)
 
     target = normalize_name(bank_row.get("beneficiary") or "")
     if not target:
@@ -455,7 +464,7 @@ def match_counterparty(bank_row: dict, candidates: list[dict]) -> dict | None:
         s = jaccard_token_overlap(target, normalize_name(c["customer_name"]))
         if s > score:
             best, score = c, s
-    return best if score >= 0.5 else None
+    return CounterpartyMatch(best, "fuzzy_name", score) if score >= 0.5 else None
 
 
 def enrich_bank_transactions() -> int:
@@ -503,46 +512,42 @@ def enrich_bank_transactions() -> int:
         """)
         cur.execute("TRUNCATE silver_hld.bank_transactions")
 
-        n = 0
+        params = []
         for r in bronze_rows:
             match = match_counterparty(r, candidates)
-            method = (
-                "iban" if match and r["iban"] == match["iban"] else
-                "customer_hint" if match and r["customer_number_hint"] == match["customer_number"] else
-                "fuzzy_name" if match else "unmatched"
-            )
-            score = jaccard_token_overlap(
-                normalize_name(r.get("beneficiary") or ""),
-                normalize_name(match["customer_name"]) if match else "",
-            ) if method == "fuzzy_name" else None
+            if match is None:
+                cp_number = cp_name = None
+                method, score = "unmatched", None
+            else:
+                cp_number = match.counterparty["customer_number"]
+                cp_name = match.counterparty["customer_name"]
+                method, score = match.method, match.score
+            params.append((
+                r["booking_date"], r["value_date"], r["booking_text"],
+                r["beneficiary"], r["iban"], r["bic"],
+                r["amount"], r["currency"], r["invoice_no"], r["invoice_date"],
+                cp_number, cp_name, method, score, now,
+            ))
 
-            cur.execute(
-                """
-                INSERT INTO silver_hld.bank_transactions
-                  (booking_date, value_date, booking_text, beneficiary, iban, bic,
-                   amount, currency, invoice_no, invoice_date,
-                   counterparty_number, counterparty_name, match_method, match_score,
-                   updated_at)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                ON CONFLICT (booking_date, beneficiary, amount) DO UPDATE SET
-                  counterparty_number = EXCLUDED.counterparty_number,
-                  counterparty_name = EXCLUDED.counterparty_name,
-                  match_method = EXCLUDED.match_method,
-                  match_score = EXCLUDED.match_score,
-                  updated_at = EXCLUDED.updated_at
-                """,
-                (
-                    r["booking_date"], r["value_date"], r["booking_text"],
-                    r["beneficiary"], r["iban"], r["bic"],
-                    r["amount"], r["currency"], r["invoice_no"], r["invoice_date"],
-                    match["customer_number"] if match else None,
-                    match["customer_name"] if match else None,
-                    method, score, now,
-                ),
-            )
-            n += 1
+        cur.executemany(
+            """
+            INSERT INTO silver_hld.bank_transactions
+              (booking_date, value_date, booking_text, beneficiary, iban, bic,
+               amount, currency, invoice_no, invoice_date,
+               counterparty_number, counterparty_name, match_method, match_score,
+               updated_at)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT (booking_date, beneficiary, amount) DO UPDATE SET
+              counterparty_number = EXCLUDED.counterparty_number,
+              counterparty_name = EXCLUDED.counterparty_name,
+              match_method = EXCLUDED.match_method,
+              match_score = EXCLUDED.match_score,
+              updated_at = EXCLUDED.updated_at
+            """,
+            params,
+        )
         conn.commit()
-    return n
+    return len(params)
 
 
 def run() -> None:

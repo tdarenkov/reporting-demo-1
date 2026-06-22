@@ -1,0 +1,27 @@
+version: 2
+
+models:
+  - name: stg__exchange_rates
+    description: |
+      Monthly-average FX rate-to-USD per currency, staged from the daily
+      `exchange_rates` seed (averaged per calendar month, mirroring the
+      original Fabric `avg_yearmonth_rates` view). Joined by the non-USD marts
+      on the transaction's year+month to translate local amounts to
+      `usd_amount` (`usd = fx_amount * rate_to_usd`). Uniqueness of
+      `(yearmonth, currency)` is enforced by the singular test
+      `tests/exchange_rates_unique.sql`.
+    columns:
+      - name: yearmonth
+        description: Rate month as YYYYMM (e.g. 202401), the join key to sales.
+        tests:
+          - not_null
+      - name: currency
+        description: ISO currency code priced against USD.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['EUR', 'CZK', 'INR', 'PLN']
+      - name: rate_to_usd
+        description: Multiplier such that `local_amount * rate_to_usd = usd_amount`.
+        tests:
+          - not_null

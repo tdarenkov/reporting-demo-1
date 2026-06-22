@@ -128,18 +128,22 @@ class TestMatchCounterparty:
             "beneficiary": "Some other name",
         }
         match = hld.match_counterparty(bank, candidates)
-        assert match["customer_number"] == "10001"
+        assert match.counterparty["customer_number"] == "10001"
+        assert match.method == "iban"
 
     def test_customer_hint_when_no_iban(self, candidates):
         bank = {"iban": None, "customer_number_hint": "10002", "beneficiary": "Random"}
         match = hld.match_counterparty(bank, candidates)
-        assert match["customer_number"] == "10002"
+        assert match.counterparty["customer_number"] == "10002"
+        assert match.method == "customer_hint"
 
     def test_fuzzy_name_when_no_other_signal(self, candidates):
         bank = {"iban": None, "customer_number_hint": None,
                 "beneficiary": "Acme Foods GmbH"}
         match = hld.match_counterparty(bank, candidates)
-        assert match["customer_number"] == "10001"
+        assert match.counterparty["customer_number"] == "10001"
+        assert match.method == "fuzzy_name"
+        assert match.score >= 0.5
 
     def test_returns_none_when_no_match(self, candidates):
         bank = {"iban": None, "customer_number_hint": None,

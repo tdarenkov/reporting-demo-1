@@ -99,8 +99,11 @@ def read_json(path: Path) -> Any:
 def latest_match(directory: Path, pattern: str, suffix: str = "") -> Path:
     """Return the most-recent file under directory whose name contains pattern.
 
-    Sort is lexicographic — works because the source filenames carry an
-    embedded date (YYYY-MM-DD or MMDDYY), so lex sort == chronological sort.
+    Sort is lexicographic. That equals chronological order only when the
+    embedded date is zero-padded ISO (`YYYY-MM-DD`) — which is what the
+    current callers use. A `MMDDYY` stamp does NOT sort chronologically
+    (e.g. `010125` < `020124`), so a caller using `MMDDYY` filenames must
+    not rely on this to pick the latest file.
     """
     matches = sorted(
         p for p in directory.iterdir() if pattern in p.name and p.name.endswith(suffix)

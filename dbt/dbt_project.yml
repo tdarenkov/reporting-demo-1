@@ -1,8 +1,8 @@
-name: 'acme'
+name: 'reporting_demo'
 version: '1.0.0'
 config-version: 2
 
-profile: 'acme'
+profile: 'reporting_demo'
 
 model-paths: ["models"]
 seed-paths: ["seeds"]
@@ -26,7 +26,7 @@ clean-targets:
 #   marts         → silver_dbt           (tables)
 #
 models:
-  acme:
+  reporting_demo:
     staging:
       +materialized: view
       +schema: staging
@@ -34,3 +34,15 @@ models:
       +materialized: ephemeral
     marts:
       +materialized: table
+
+# The exchange-rate reference table ships as a seed (public FX data, unlike the
+# redacted live subsidiary sources). It lands beside the staging layer and is
+# typed explicitly so `date`/`rate_to_usd` don't import as text.
+seeds:
+  reporting_demo:
+    exchange_rates:
+      +schema: staging
+      +column_types:
+        date: date
+        currency: text
+        rate_to_usd: numeric(18, 8)

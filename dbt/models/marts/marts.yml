@@ -55,9 +55,9 @@ models:
         tests: [not_null]
       - name: usd_amount
         description: |
-          Line revenue translated to USD. For HL/HLB this equals
-          `fx_amount` (USD-functional). For other subs the FX translation
-          is applied upstream of the staging layer.
+          Line revenue in USD. HL/HLB are USD-functional, so this equals
+          `fx_amount`. The non-USD marts translate via a join to
+          `stg__exchange_rates`: `usd_amount = round(fx_amount * rate_to_usd, 2)`.
         data_type: numeric
         constraints: [{ type: not_null }]
       - name: quantity
